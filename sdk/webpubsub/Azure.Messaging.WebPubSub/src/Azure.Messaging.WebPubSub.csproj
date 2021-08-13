@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>Azure SDK client library for the WebPubSub service</Description>
     <AssemblyTitle>Azure SDK for WebPubSub</AssemblyTitle>
@@ -7,11 +7,13 @@
     <TargetFrameworks>$(RequiredTargetFrameworks)</TargetFrameworks>
     <NoWarn>$(NoWarn);419</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsExtensionClientLibrary>true</IsExtensionClientLibrary>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Azure.Core.Experimental" />
+    <PackageReference Include="Microsoft.AspNetCore.Http" />
     <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 

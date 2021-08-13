@@ -6,6 +6,7 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
 using Azure.Core;
 
 namespace Azure.Messaging.WebPubSub
@@ -17,5 +18,15 @@ namespace Azure.Messaging.WebPubSub
         /// Reverse proxy.
         /// </summary>
         public Uri ReverseProxyEndpoint { get; set; }
+
+        /// <summary>
+        /// AllowedHosts for abuse protection validation.
+        /// </summary>
+        public List<string> AllowedHosts { get; set; }
+
+        /// <summary>
+        /// AccessKeys for Signature checks.
+        /// </summary>
+        public List<string> AccessKeys { get; set; }
     }
 }
