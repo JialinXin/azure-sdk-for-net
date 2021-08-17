@@ -1,7 +1,9 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Azure.Messaging.WebPubSub
@@ -9,55 +11,76 @@ namespace Azure.Messaging.WebPubSub
     /// <summary>
     /// Connect event request.
     /// </summary>
+    [JsonConverter(typeof(ConnectEventRequestJsonConverter))]
     public sealed class ConnectEventRequest : ServiceRequest
     {
         /// <summary>
         /// User Claims.
         /// </summary>
-        [JsonPropertyName("claim")]
-#pragma warning disable CA2227 // Collection properties should be read only
-        public IDictionary<string, string[]> Claims { get; set; }
-#pragma warning restore CA2227 // Collection properties should be read only
+        public IDictionary<string, string[]> Claims { get; internal set; }
 
         /// <summary>
         /// Query.
         /// </summary>
-        [JsonPropertyName("query")]
-#pragma warning disable CA2227 // Collection properties should be read only
-        public IDictionary<string, string[]> Query { get; set; }
-#pragma warning restore CA2227 // Collection properties should be read only
+        public IDictionary<string, string[]> Query { get; internal set; }
 
         /// <summary>
         /// Supported subprotocols.
         /// </summary>
-        [JsonPropertyName("subprotocols")]
-        public string[] Subprotocols { get; set; }
+        public string[] Subprotocols { get; internal set; }
 
         /// <summary>
         /// Client certificates.
         /// </summary>
-        [JsonPropertyName("clientCertificates")]
-        public ClientCertificateInfo[] ClientCertificates { get; set; }
+        public ClientCertificateInfo[] ClientCertificates { get; internal set; }
 
         /// <summary>
-        /// string name of the request.
+        /// The name of the request.
         /// </summary>
         public override string Name => nameof(ConnectEventRequest);
 
-        /// <summary>
-        /// json deserialize.
-        /// </summary>
-        public ConnectEventRequest()
-            : base(null)
-        { }
+        internal ConnectEventRequest()
+            : base(null) { }
 
-        internal ConnectEventRequest(ConnectionContext connectionContext, IDictionary<string, string[]> claims, IDictionary<string, string[]> query, string[] subprotocols, ClientCertificateInfo[] clientCertificateInfos)
-            : base(connectionContext)
+        internal partial class ConnectEventRequestJsonConverter : JsonConverter<ConnectEventRequest>
         {
-            Claims = claims;
-            Query = query;
-            Subprotocols = subprotocols;
-            ClientCertificates = clientCertificateInfos;
+            public override ConnectEventRequest Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                var request = new ConnectEventRequest();
+                try
+                {
+                    using var document = JsonDocument.ParseValue(ref reader);
+                    var elements = document.RootElement.EnumerateObject();
+                    foreach (var item in elements)
+                    {
+                        if (item.Name.Equals(nameof(Claims), StringComparison.OrdinalIgnoreCase))
+                        {
+                            request.Claims = JsonSerializer.Deserialize<Dictionary<string, string[]>>(item.Value.ToString());
+                        }
+                        if (item.Name.Equals(nameof(Query), StringComparison.OrdinalIgnoreCase))
+                        {
+                            request.Query = JsonSerializer.Deserialize<Dictionary<string, string[]>>(item.Value.ToString());
+                        }
+                        if (item.Name.Equals(nameof(Subprotocols), StringComparison.OrdinalIgnoreCase))
+                        {
+                            request.Subprotocols = JsonSerializer.Deserialize<string[]>(item.Value.ToString());
+                        }
+                        if (item.Name.Equals(nameof(ClientCertificates), StringComparison.OrdinalIgnoreCase))
+                        {
+                            request.ClientCertificates = JsonSerializer.Deserialize<ClientCertificateInfo[]>(item.Value.ToString());
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                }
+                return request;
+            }
+
+            public override void Write(Utf8JsonWriter writer, ConnectEventRequest value, JsonSerializerOptions options)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

@@ -19,12 +19,7 @@ namespace Azure.Messaging.WebPubSub
             _options = options;
         }
 
-        /// <summary>
-        /// Handle requests.
-        /// </summary>
-        /// <param name="context"></param>
-        /// <param name="instance"></param>
-        public async Task HandleRequest<THub>(HttpContext context, THub instance) where THub: ServiceHub
+        public async Task HandleRequest<THub>(HttpContext context, THub serviceHub) where THub: ServiceHub
         {
             HttpRequest request = context.Request;
 
@@ -34,65 +29,61 @@ namespace Azure.Messaging.WebPubSub
             }
 
             // abuse validation.
-            if (request.IsAbuseCheck(out ValidationRequest validationRequest))
+            if (request.IsValidationRequest(out ValidationRequest validationRequest))
             {
                 if (_options != null)
                 {
                     foreach (var item in validationRequest.RequestHosts)
                     {
-                        if (_options._hostKeyMappings.ContainsKey(item))
+                        if (_options.ContainsHost(item))
                         {
-                            break;
+                            context.Response.Headers.Add(Constants.Headers.WebHookAllowedOrigin, Constants.DefaultAllowedHost);
+                            return;
                         }
-                        context.Response.StatusCode = 400;
-                        await context.Response.WriteAsync("Abuse Protection validation failed.").ConfigureAwait(false);
-                        return;
                     }
                 }
-                context.Response.StatusCode = 200;
-                context.Response.Headers.Add(Constants.Headers.WebHookAllowedOrigin, Constants.DefaultAllowedHost);
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsync("Abuse Protection validation failed.").ConfigureAwait(false);
                 return;
             }
 
-            if (!request.TryParseRequest(out ConnectionContext connectionContext))
+            if (!request.TryParseCloudEvents(out ConnectionContext connectionContext))
             {
-                context.Response.StatusCode = 400;
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 await context.Response.WriteAsync("Unknown upstream request.").ConfigureAwait(false);
                 return;
             }
 
             // Signature check
-            if (_options != null && _options._hostKeyMappings.Count > 0)
+            if (_options != null && _options.ContainsHost())
             {
-                if (!_options._hostKeyMappings.TryGetValue(connectionContext.Origin, out var accessKey)
+                if (!_options.TryGetKey(connectionContext.Origin, out var accessKey)
                     || !RequestHelper.ValidateSignature(connectionContext.ConnectionId, connectionContext.Signature, accessKey))
                 {
-                    context.Response.StatusCode = 401;
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     await context.Response.WriteAsync("Signature validation failed.").ConfigureAwait(false);
                     return;
                 }
             }
 
             RequestType requestType = RequestHelper.GetRequestType(connectionContext.EventType, connectionContext.EventName);
-            //var hubInstance = context.RequestServices.GetService(typeof(THub));
+            var serviceRequest = await request.ToServiceRequest(connectionContext).ConfigureAwait(false);
             switch (requestType)
             {
                 case RequestType.Connect:
                     {
-                        var content = await new StreamReader(request.Body).ReadToEndAsync().ConfigureAwait(false);
-                        var eventRequest = JsonSerializer.Deserialize<ConnectEventRequest>(content);
-                        eventRequest.ConnectionContext = connectionContext;
-                        var response = instance.Connect(eventRequest);
-                        //var response = InvokeMethod<THub>("Connect", eventRequest, hubInstance);
+                        var eventRequest = serviceRequest as ConnectEventRequest;
+                        var response = await serviceHub.Connect(eventRequest).ConfigureAwait(false);
                         if (response is ErrorResponse error)
                         {
-                            context.Response.StatusCode = RequestHelper.GetStatusCode(error.Code);
+                            context.Response.StatusCode = error.Code.ToStatusCode();
+                            context.Response.ContentType = Constants.ContentTypes.PlainTextContentType;
                             await context.Response.WriteAsync(error.ErrorMessage).ConfigureAwait(false);
                             return;
                         }
                         else if (response is ConnectResponse connectResponse)
                         {
-                            context.Response.StatusCode = 200;
+                            SetConnectionState(ref context, connectionContext, response);
                             await context.Response.WriteAsync(JsonSerializer.Serialize(connectResponse)).ConfigureAwait(false);
                             return;
                         }
@@ -100,45 +91,41 @@ namespace Azure.Messaging.WebPubSub
                     break;
                 case RequestType.User:
                     {
-                        using var ms = new MemoryStream();
-                        await request.Body.CopyToAsync(ms).ConfigureAwait(false);
-                        var message = BinaryData.FromBytes(ms.ToArray());
-                        if (!RequestHelper.ValidateMediaType(MediaTypeHeaderValue.Parse(request.ContentType).MediaType, out var dataType))
+                        if (serviceRequest is InvalidRequest invalid)
                         {
-                            context.Response.StatusCode = 400;
-                            await context.Response.WriteAsync($"ContentType is not supported: {request.ContentType}").ConfigureAwait(false);
+                            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                            await context.Response.WriteAsync(invalid.ErrorMessage).ConfigureAwait(false);
                             return;
                         }
-                        var eventRequest = new MessageEventRequest(connectionContext, message, dataType);
-                        var response = instance.Message(eventRequest);
-                        //var response = InvokeMethod<THub>("Message", eventRequest, hubInstance);
+                        var eventRequest = serviceRequest as MessageEventRequest;
+                        var response = await serviceHub.Message(eventRequest).ConfigureAwait(false);
                         if (response is ErrorResponse error)
                         {
-                            context.Response.StatusCode = RequestHelper.GetStatusCode(error.Code);
+                            context.Response.StatusCode = error.Code.ToStatusCode();
+                            context.Response.ContentType = Constants.ContentTypes.PlainTextContentType;
                             await context.Response.WriteAsync(error.ErrorMessage).ConfigureAwait(false);
                             return;
                         }
                         else if (response is MessageResponse msgResponse)
                         {
-                            context.Response.StatusCode = 200;
-                            await context.Response.WriteAsync(JsonSerializer.Serialize(msgResponse)).ConfigureAwait(false);
+                            SetConnectionState(ref context, connectionContext, response);
+                            context.Response.ContentType = msgResponse.DataType.ToContentType();
+                            var payload = msgResponse.Message.ToArray();
+                            await context.Response.Body.WriteAsync(payload, 0, payload.Length).ConfigureAwait(false);
                             return;
                         }
                     }
                     break;
                 case RequestType.Connected:
                     {
-                        instance.Connected(new ConnectedEventRequest(connectionContext));
-                        //InvokeMethod<THub>(nameof(ServiceHub.Connected), (new ConnectedEventRequest(connectionContext)), hubInstance);
+                        var eventRequest = serviceRequest as ConnectedEventRequest;
+                        await serviceHub.Connected(eventRequest).ConfigureAwait(false);
                     }
                     break;
                 case RequestType.Disconnected:
                     {
-                        var content = await new StreamReader(request.Body).ReadToEndAsync().ConfigureAwait(false);
-                        var eventRequest = JsonSerializer.Deserialize<DisconnectedEventRequest>(content);
-                        eventRequest.ConnectionContext = connectionContext;
-                        instance.Disconnected(eventRequest);
-                        //InvokeMethod<THub>(nameof(ServiceHub.Disconnected), eventRequest, hubInstance);
+                        var eventRequest = serviceRequest as DisconnectedEventRequest;
+                        await serviceHub.Disconnected(eventRequest).ConfigureAwait(false);
                     }
                     break;
                 default:
@@ -146,15 +133,16 @@ namespace Azure.Messaging.WebPubSub
             }
         }
 
-        //private static ServiceResponse InvokeMethod<THub>(string methodName, ServiceRequest request, object instance)
-        //{
-        //    var method = typeof(THub).GetMethod(methodName);
-        //    if (instance == null)
-        //    {
-        //        var constructor = typeof(THub).GetConstructor(Type.EmptyTypes);
-        //        instance = constructor.Invoke(Array.Empty<object>());
-        //    }
-        //    return method.Invoke(instance, new[] { request }) as ServiceResponse;
-        //}
+        private static void SetConnectionState(ref HttpContext context, ConnectionContext connectionContext, ServiceResponse response)
+        {
+            if (connectionContext.States?.Count > 0 || response.States?.Count > 0)
+            {
+                var states = RequestHelper.UpdateConnectionState(connectionContext.States, response.States);
+                if (states?.Count > 0)
+                {
+                    context.Response.Headers.Add(Constants.Headers.CloudEvents.State, states.ToHeaderStates());
+                }
+            }
+        }
     }
 }

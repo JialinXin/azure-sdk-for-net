@@ -5,13 +5,31 @@ using System.Collections.Generic;
 
 namespace Azure.Messaging.WebPubSub
 {
-    internal sealed class ValidationRequest : ServiceRequest
+    /// <summary>
+    /// Validation request for abuse protection.
+    /// </summary>
+    public sealed class ValidationRequest : ServiceRequest
     {
+        /// <summary>
+        /// Flag to indicate whether a valid request.
+        /// </summary>
         public bool Valid { get; }
-        public List<string> RequestHosts { get; }
 
+        /// <summary>
+        /// Request hosts from headers.
+        /// </summary>
+        internal List<string> RequestHosts { get; }
+
+        /// <summary>
+        /// Name of the request type.
+        /// </summary>
         public override string Name => nameof(ValidationRequest);
 
+        /// <summary>
+        /// Ctor.
+        /// </summary>
+        /// <param name="valid"></param>
+        /// <param name="requestHosts"></param>
         public ValidationRequest(bool valid, List<string> requestHosts)
             :base(null)
         {

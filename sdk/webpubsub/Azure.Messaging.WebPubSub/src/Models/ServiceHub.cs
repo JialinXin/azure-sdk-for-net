@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Threading.Tasks;
 
 namespace Azure.Messaging.WebPubSub
 {
@@ -15,43 +16,32 @@ namespace Azure.Messaging.WebPubSub
         /// </summary>
         /// <param name="request"></param>
         /// <returns>ConnectResponse or ErrorResponse.</returns>
-        public virtual ServiceResponse Connect(ConnectEventRequest request)
-        {
-            return new ConnectResponse
-            {
-                UserId = request.ConnectionContext.UserId
-            };
-        }
+        public abstract Task<ServiceResponse> Connect(ConnectEventRequest request);
 
         /// <summary>
-        /// Message event method.
+        /// User event method.
         /// </summary>
         /// <param name="request"></param>
         /// <returns>MessageResponse or ErrorResponse.</returns>
-        public virtual ServiceResponse Message(MessageEventRequest request)
-        {
-            return new MessageResponse();
-        }
+        public abstract Task<ServiceResponse> Message(MessageEventRequest request);
 
         /// <summary>
         /// Connected event method.
         /// </summary>
         /// <param name="request"></param>
-        public virtual void Connected(ConnectedEventRequest request)
-        { }
+        public virtual Task Connected(ConnectedEventRequest request)
+        {
+            return Task.CompletedTask;
+        }
 
         /// <summary>
         /// Disconnected event method.
         /// </summary>
         /// <param name="request"></param>
-        public virtual void Disconnected(DisconnectedEventRequest request)
-        { }
-
-        /// <summary>
-        /// Ctor.
-        /// </summary>
-        public ServiceHub()
-        { }
+        public virtual Task Disconnected(DisconnectedEventRequest request)
+        {
+            return Task.CompletedTask;
+        }
 
         /// <summary>
         /// Dispose.

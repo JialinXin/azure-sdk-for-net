@@ -7,12 +7,12 @@ using Microsoft.AspNetCore.Http;
 namespace Azure.Messaging.WebPubSub
 {
     /// <summary>
-    /// service handler.
+    /// Service request handler.
     /// </summary>
     public interface IServiceRequestHandler
     {
         /// <summary>
-        /// handle request.
+        /// Handle request with methods defined by ServiceHub.
         /// </summary>
         /// <param name="context"></param>
         /// <param name="hub"></param>

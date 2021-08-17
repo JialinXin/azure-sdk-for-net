@@ -22,17 +22,17 @@ namespace Azure.Messaging.WebPubSub
         public string EventName { get; internal set; }
 
         /// <summary>
-        /// The hub which the message belongs to.
+        /// The hub which the connection belongs to.
         /// </summary>
         public string Hub { get; internal set; }
 
         /// <summary>
-        /// The connection-id of the client which send the message.
+        /// The connection-id of the client.
         /// </summary>
         public string ConnectionId { get; internal set; }
 
         /// <summary>
-        /// The user identity of the client which send the message.
+        /// The user identity of the client.
         /// </summary>
         public string UserId { get; internal set; }
 
@@ -47,9 +47,9 @@ namespace Azure.Messaging.WebPubSub
         public string Origin { get; internal set; }
 
         /// <summary>
-        /// The connection state.
+        /// The connection states.
         /// </summary>
-        public Dictionary<string, object> States { get; internal set; }
+        public Dictionary<string, object> States { get; internal set; } = new Dictionary<string, object>();
 
         /// <summary>
         /// The headers of request.

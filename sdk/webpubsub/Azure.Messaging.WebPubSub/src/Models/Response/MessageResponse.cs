@@ -14,11 +14,31 @@ namespace Azure.Messaging.WebPubSub
         /// <summary>
         /// Message.
         /// </summary>
-        public BinaryData Message { get; set; }
+        public BinaryData Message { get; }
 
         /// <summary>
         /// Message data type.
         /// </summary>
-        public MessageDataType DataType { get; set; } = MessageDataType.Text;
+        public MessageDataType DataType { get; }
+
+        /// <summary>
+        /// Initialize an instance of MessageResponse.
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="dataType"></param>
+        public MessageResponse(BinaryData message, MessageDataType dataType = MessageDataType.Text)
+        {
+            Message = message;
+            DataType = dataType;
+        }
+
+        /// <summary>
+        /// Initialize an instance of MessageResponse.
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="dataType"></param>
+        public MessageResponse(string message, MessageDataType dataType = MessageDataType.Text)
+            : this(BinaryData.FromString(message), dataType)
+        { }
     }
 }

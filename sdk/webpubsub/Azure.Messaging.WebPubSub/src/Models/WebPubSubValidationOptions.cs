@@ -7,11 +7,11 @@ using System.Collections.Generic;
 namespace Azure.Messaging.WebPubSub
 {
     /// <summary>
-    /// Options when using Web PubSub service.
+    /// Validation options when using Web PubSub service.
     /// </summary>
     public class WebPubSubValidationOptions
     {
-        internal Dictionary<string, string> _hostKeyMappings = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _hostKeyMappings = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Ctor.
@@ -24,6 +24,25 @@ namespace Azure.Messaging.WebPubSub
                 (Uri host, AzureKeyCredential credential) = WebPubSubServiceClient.ParseConnectionString(item);
                 _hostKeyMappings.Add(host.Host, credential.Key);
             }
+        }
+
+        internal bool ContainsHost()
+        {
+            return _hostKeyMappings.Count > 0;
+        }
+
+        internal bool ContainsHost(string host)
+        {
+            return _hostKeyMappings.ContainsKey(host);
+        }
+
+        internal bool TryGetKey(string host, out string accessKey)
+        {
+            if (_hostKeyMappings.TryGetValue(host, out accessKey))
+            {
+                return true;
+            }
+            return false;
         }
     }
 }

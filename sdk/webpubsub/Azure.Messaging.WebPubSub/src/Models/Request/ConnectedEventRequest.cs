@@ -13,10 +13,8 @@ namespace Azure.Messaging.WebPubSub
         /// </summary>
         public override string Name => nameof(ConnectEventRequest);
 
-        /// <summary>
-        /// Constrator.
-        /// </summary>
-        internal ConnectedEventRequest(ConnectionContext connectionContext) : base(connectionContext)
+        internal ConnectedEventRequest(ConnectionContext connectionContext)
+            : base(connectionContext)
         {
         }
     }
