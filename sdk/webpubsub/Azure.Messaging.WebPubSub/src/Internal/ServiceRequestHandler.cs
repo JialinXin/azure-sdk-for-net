@@ -1,9 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
-using System.IO;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -28,7 +25,7 @@ namespace Azure.Messaging.WebPubSub
                 return;
             }
 
-            // abuse validation.
+            // abuse protection validation.
             if (request.IsValidationRequest(out ValidationRequest validationRequest))
             {
                 if (_options != null)
@@ -55,18 +52,14 @@ namespace Azure.Messaging.WebPubSub
             }
 
             // Signature check
-            if (_options != null && _options.ContainsHost())
+            if (!connectionContext.IsValidSignature(_options))
             {
-                if (!_options.TryGetKey(connectionContext.Origin, out var accessKey)
-                    || !RequestHelper.ValidateSignature(connectionContext.ConnectionId, connectionContext.Signature, accessKey))
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    await context.Response.WriteAsync("Signature validation failed.").ConfigureAwait(false);
-                    return;
-                }
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsync("Signature validation failed.").ConfigureAwait(false);
+                return;
             }
 
-            RequestType requestType = RequestHelper.GetRequestType(connectionContext.EventType, connectionContext.EventName);
+            RequestType requestType = connectionContext.GetRequestType();
             var serviceRequest = await request.ToServiceRequest(connectionContext).ConfigureAwait(false);
             switch (requestType)
             {
@@ -137,7 +130,7 @@ namespace Azure.Messaging.WebPubSub
         {
             if (connectionContext.States?.Count > 0 || response.States?.Count > 0)
             {
-                var states = RequestHelper.UpdateConnectionState(connectionContext.States, response.States);
+                var states = connectionContext.States.UpdateStates(response.States);
                 if (states?.Count > 0)
                 {
                     context.Response.Headers.Add(Constants.Headers.CloudEvents.State, states.ToHeaderStates());

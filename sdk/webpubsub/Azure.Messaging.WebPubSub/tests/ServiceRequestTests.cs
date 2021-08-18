@@ -15,9 +15,8 @@ using NUnit.Framework;
 namespace Azure.Messaging.WebPubSub.Tests
 {
     [TestFixture]
-    public class RequestHelperTests
+    public class ServiceRequestTests
     {
-        //private static (string ConnectionId, string AccessKey, string Signature) TestKey = ("0f9c97a2f0bf4706afe87a14e0797b11", "7aab239577fd4f24bc919802fb629f5f", "sha256=7767effcb3946f3e1de039df4b986ef02c110b1469d02c0a06f41b3b727ab561");
         private static Uri TestUri = new Uri("https://my-host.com");
 
         [Test]
@@ -33,7 +32,7 @@ namespace Azure.Messaging.WebPubSub.Tests
             };
             response.SetState("test", "ddd");
             response.SetState("bbb", "bbb1");
-            var updated = RequestHelper.UpdateConnectionState(exist, response.States);
+            var updated = exist.UpdateStates(response.States);
 
             // new
             Assert.AreEqual("ddd", updated["test"]);
@@ -43,7 +42,7 @@ namespace Azure.Messaging.WebPubSub.Tests
             Assert.AreEqual("bbb1", updated["bbb"]);
 
             response.ClearStates();
-            updated = RequestHelper.UpdateConnectionState(exist, response.States);
+            updated = exist.UpdateStates(response.States);
 
             // After clear is null.
             Assert.IsNull(updated);
@@ -58,7 +57,7 @@ namespace Azure.Messaging.WebPubSub.Tests
 
             var encoded = state.ToHeaderStates();
 
-            var decoded = RequestHelper.DecodeConnectionState(encoded);
+            var decoded = encoded.DecodeConnectionState();
 
             Assert.AreEqual(state, decoded);
         }
@@ -75,7 +74,7 @@ namespace Azure.Messaging.WebPubSub.Tests
             Assert.AreEqual(2, converted.Subprotocols.Length);
             Assert.AreEqual(new string[] { "protocol1", "protocol2" }, converted.Subprotocols);
             Assert.NotNull(converted.ClientCertificates);
-            Assert.AreEqual(0, converted.ClientCertificates);
+            Assert.AreEqual(0, converted.ClientCertificates.Length);
         }
 
         [Test]
@@ -140,8 +139,42 @@ namespace Azure.Messaging.WebPubSub.Tests
         [TestCase("ccc", false)]
         public void TestSignatureCheck(string accessKey, bool valid)
         {
-            var result = RequestHelper.ValidateSignature("0f9c97a2f0bf4706afe87a14e0797b11", "sha256=7767effcb3946f3e1de039df4b986ef02c110b1469d02c0a06f41b3b727ab561", accessKey);
+            var connectionContext = new ConnectionContext()
+            {
+                ConnectionId = "0f9c97a2f0bf4706afe87a14e0797b11",
+                Signature = "sha256=7767effcb3946f3e1de039df4b986ef02c110b1469d02c0a06f41b3b727ab561",
+                Origin = TestUri.Host
+            };
+            var options = new WebPubSubValidationOptions($"Endpoint={TestUri};AccessKey={accessKey};Version=1.0;");
+            var result = connectionContext.IsValidSignature(options);
             Assert.AreEqual(valid, result);
+        }
+
+        [Test]
+        public void TestSignatureCheck_OptionsNull()
+        {
+            var connectionContext = new ConnectionContext()
+            {
+                ConnectionId = "0f9c97a2f0bf4706afe87a14e0797b11",
+                Signature = "sha256=7767effcb3946f3e1de039df4b986ef02c110b1469d02c0a06f41b3b727ab561",
+                Origin = TestUri.Host
+            };
+            var result = connectionContext.IsValidSignature(null);
+            Assert.True(result);
+        }
+
+        [Test]
+        public void TestSignatureCheck_OptionsEmpty()
+        {
+            var connectionContext = new ConnectionContext()
+            {
+                ConnectionId = "0f9c97a2f0bf4706afe87a14e0797b11",
+                Signature = "sha256=7767effcb3946f3e1de039df4b986ef02c110b1469d02c0a06f41b3b727ab561",
+                Origin = TestUri.Host
+            };
+            var options = new WebPubSubValidationOptions();
+            var result = connectionContext.IsValidSignature(null);
+            Assert.True(result);
         }
 
         [TestCase("OPTIONS", true)]

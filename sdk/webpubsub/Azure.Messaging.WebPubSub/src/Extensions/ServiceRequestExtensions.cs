@@ -18,7 +18,7 @@ namespace Azure.Messaging.WebPubSub
     /// <summary>
     /// Help methods to parse upstream requests.
     /// </summary>
-    public static class RequestHelper
+    public static class ServiceRequestExtensions
     {
         /// <summary>
         /// Parse upstream request headers following CloudEvents.
@@ -30,7 +30,7 @@ namespace Azure.Messaging.WebPubSub
         {
             // ConnectionId is required in upstream request, and method is POST.
             if (!request.Headers.ContainsKey(Constants.Headers.CloudEvents.ConnectionId)
-                || !request.Method.Equals("post", StringComparison.OrdinalIgnoreCase))
+                || ! HttpMethods.IsPost(request.Method))
             {
                 connection = null;
                 return false;
@@ -39,24 +39,24 @@ namespace Azure.Messaging.WebPubSub
             connection = new ConnectionContext();
             try
             {
-                connection.ConnectionId = GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.ConnectionId);
-                connection.Hub = GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.Hub);
-                connection.EventType = GetEventType(GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.Type));
-                connection.EventName = GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.EventName);
-                connection.Signature = GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.Signature);
-                connection.Origin = GetHeaderValueOrDefault(request.Headers, Constants.Headers.WebHookRequestOrigin);
+                connection.ConnectionId = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.ConnectionId);
+                connection.Hub = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.Hub);
+                connection.EventType = GetEventType(request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.Type));
+                connection.EventName = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.EventName);
+                connection.Signature = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.Signature);
+                connection.Origin = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.WebHookRequestOrigin);
                 connection.Headers = request.Headers.ToDictionary(x => x.Key, v => new StringValues(v.Value.ToArray()), StringComparer.OrdinalIgnoreCase);
 
                 // UserId is optional, e.g. connect
                 if (request.Headers.ContainsKey(Constants.Headers.CloudEvents.UserId))
                 {
-                    connection.UserId = GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.UserId);
+                    connection.UserId = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.UserId);
                 }
 
                 // connection states.
                 if (request.Headers.ContainsKey(Constants.Headers.CloudEvents.State))
                 {
-                    connection.States = DecodeConnectionState(GetHeaderValueOrDefault(request.Headers, Constants.Headers.CloudEvents.State));
+                    connection.States = request.Headers.GetFirstHeaderValueOrDefault(Constants.Headers.CloudEvents.State).DecodeConnectionState();
                 }
             }
             catch (Exception)
@@ -75,7 +75,7 @@ namespace Azure.Messaging.WebPubSub
         /// <returns></returns>
         public static bool IsValidationRequest(this HttpRequest request, out ValidationRequest validationRequest)
         {
-            if (request.Method.Equals("options", StringComparison.OrdinalIgnoreCase))
+            if (HttpMethods.IsOptions(request.Method))
             {
                 request.Headers.TryGetValue(Constants.Headers.WebHookRequestOrigin, out StringValues requestHosts);
                 if (requestHosts.Any())
@@ -91,23 +91,31 @@ namespace Azure.Messaging.WebPubSub
         /// <summary>
         /// Validate request signature by connection-id and service key.
         /// </summary>
-        /// <param name="connectionId"></param>
-        /// <param name="signature"></param>
-        /// <param name="accessKey"></param>
+        /// <param name="connectionContext"></param>
+        /// <param name="options"></param>
         /// <returns></returns>
-        public static bool ValidateSignature(string connectionId, string signature, string accessKey)
+        public static bool IsValidSignature(this ConnectionContext connectionContext, WebPubSubValidationOptions options)
         {
-            IReadOnlyList<string> signatures = GetSignatureList(signature);
-            if (signatures == null)
-            {
-                return false;
-            }
-            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(accessKey));
-            var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(connectionId));
-            var hash = "sha256=" + BitConverter.ToString(hashBytes).Replace("-", "");
-            if (signatures.Contains(hash, StringComparer.OrdinalIgnoreCase))
+            // no options skip validation.
+            if (options == null || !options.ContainsHost())
             {
                 return true;
+            }
+
+            if (options.TryGetKey(connectionContext.Origin, out var accessKey))
+            {
+                var signatures = connectionContext.Signature.ToHeaderList();
+                if (signatures == null)
+                {
+                    return false;
+                }
+                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(accessKey));
+                var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(connectionContext.ConnectionId));
+                var hash = "sha256=" + BitConverter.ToString(hashBytes).Replace("-", "");
+                if (signatures.Contains(hash, StringComparer.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
             }
             return false;
         }
@@ -122,7 +130,7 @@ namespace Azure.Messaging.WebPubSub
         {
             if (context != null || request.TryParseCloudEvents(out context))
             {
-                var requestType = GetRequestType(context.EventType, context.EventName);
+                var requestType = context.GetRequestType();
                 switch (requestType)
                 {
                     case RequestType.Connect:
@@ -137,7 +145,7 @@ namespace Azure.Messaging.WebPubSub
                             using var ms = new MemoryStream();
                             await request.Body.CopyToAsync(ms).ConfigureAwait(false);
                             var message = BinaryData.FromBytes(ms.ToArray());
-                            if (!ValidateMediaType(MediaTypeHeaderValue.Parse(request.ContentType).MediaType, out var dataType))
+                            if (!MediaTypeHeaderValue.Parse(request.ContentType).MediaType.IsValidMediaType(out var dataType))
                             {
                                 return new InvalidRequest($"ContentType is not supported: {request.ContentType}");
                             }
@@ -169,10 +177,10 @@ namespace Azure.Messaging.WebPubSub
         public static int ToStatusCode(this WebPubSubErrorCode errorCode) =>
             errorCode switch
             {
-                WebPubSubErrorCode.UserError => 400,
-                WebPubSubErrorCode.Unauthorized => 401,
+                WebPubSubErrorCode.UserError => StatusCodes.Status400BadRequest,
+                WebPubSubErrorCode.Unauthorized => StatusCodes.Status401Unauthorized,
                 // default and server error returns 500
-                _ => 500
+                _ => StatusCodes.Status500InternalServerError
             };
 
         /// <summary>
@@ -183,23 +191,9 @@ namespace Azure.Messaging.WebPubSub
         public static string ToContentType(this MessageDataType dataType) =>
             dataType switch
             {
-                MessageDataType.Text => Constants.ContentTypes.PlainTextContentType,
-                MessageDataType.Json => Constants.ContentTypes.JsonContentType,
+                MessageDataType.Text => $"{Constants.ContentTypes.PlainTextContentType}; {Constants.ContentTypes.CharsetUTF8}",
+                MessageDataType.Json => $"{Constants.ContentTypes.JsonContentType}; {Constants.ContentTypes.CharsetUTF8}",
                 _ => Constants.ContentTypes.BinaryContentType
-            };
-
-        /// <summary>
-        /// Convert request MediaType to MessageDataType.
-        /// </summary>
-        /// <param name="mediaType"></param>
-        /// <returns></returns>
-        public static MessageDataType GetDataType(string mediaType) =>
-            mediaType.ToLowerInvariant() switch
-            {
-                Constants.ContentTypes.BinaryContentType => MessageDataType.Binary,
-                Constants.ContentTypes.JsonContentType => MessageDataType.Json,
-                Constants.ContentTypes.PlainTextContentType => MessageDataType.Text,
-                _ => throw new ArgumentException($"Not supported content type: {mediaType}")
             };
 
         /// <summary>
@@ -207,7 +201,7 @@ namespace Azure.Messaging.WebPubSub
         /// </summary>
         /// <param name="connectionStates"></param>
         /// <returns></returns>
-        public static Dictionary<string, object> DecodeConnectionState(string connectionStates)
+        public static Dictionary<string, object> DecodeConnectionState(this string connectionStates)
         {
             if (!string.IsNullOrEmpty(connectionStates))
             {
@@ -216,7 +210,7 @@ namespace Azure.Messaging.WebPubSub
                 var statesObj = JsonDocument.Parse(parsedStates);
                 foreach (var item in statesObj.RootElement.EnumerateObject())
                 {
-                    // Use ToString() to set pure value without ValueKind to compatible with Newtonsoft.Json.
+                    // Use ToString() to set pure value without ValueKind.
                     states.Add(item.Name, item.Value.ToString());
                 }
                 return states;
@@ -230,7 +224,7 @@ namespace Azure.Messaging.WebPubSub
         /// <param name="existValue"></param>
         /// <param name="newValue"></param>
         /// <returns></returns>
-        public static Dictionary<string, object> UpdateConnectionState(Dictionary<string, object> existValue, Dictionary<string, object> newValue)
+        public static Dictionary<string, object> UpdateStates(this Dictionary<string, object> existValue, Dictionary<string, object> newValue)
         {
             // clear states.
             if (newValue == null)
@@ -243,7 +237,7 @@ namespace Azure.Messaging.WebPubSub
                 return existValue;
             }
 
-            // updates based on exist value.
+            // updates based on existing value.
             foreach (var item in newValue)
             {
                 if (existValue.ContainsKey(item.Key))
@@ -268,32 +262,37 @@ namespace Azure.Messaging.WebPubSub
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value)));
         }
 
-        internal static RequestType GetRequestType(WebPubSubEventType eventType, string eventName)
+        internal static RequestType GetRequestType(this ConnectionContext context)
         {
-            if (eventType == WebPubSubEventType.User)
+            if (context.EventType == WebPubSubEventType.User)
             {
                 return RequestType.User;
             }
-            if (eventName.Equals(Constants.Events.ConnectEvent, StringComparison.OrdinalIgnoreCase))
+            if (context.EventName.Equals(Constants.Events.ConnectEvent, StringComparison.OrdinalIgnoreCase))
             {
                 return RequestType.Connect;
             }
-            if (eventName.Equals(Constants.Events.DisconnectedEvent, StringComparison.OrdinalIgnoreCase))
+            if (context.EventName.Equals(Constants.Events.DisconnectedEvent, StringComparison.OrdinalIgnoreCase))
             {
                 return RequestType.Disconnected;
             }
-            if (eventName.Equals(Constants.Events.ConnectedEvent, StringComparison.OrdinalIgnoreCase))
+            if (context.EventName.Equals(Constants.Events.ConnectedEvent, StringComparison.OrdinalIgnoreCase))
             {
                 return RequestType.Connected;
             }
             return RequestType.Ignored;
         }
 
-        internal static bool ValidateMediaType(string mediaType, out MessageDataType dataType)
+        private static string GetFirstHeaderValueOrDefault(this IHeaderDictionary header, string key)
+        {
+            return header.TryGetValue(key, out StringValues values) && values.Count > 0 ? values[0] : null;
+        }
+
+        private static bool IsValidMediaType(this string mediaType, out MessageDataType dataType)
         {
             try
             {
-                dataType = GetDataType(mediaType);
+                dataType = mediaType.GetMessageDataType();
                 return true;
             }
             catch (Exception)
@@ -303,7 +302,7 @@ namespace Azure.Messaging.WebPubSub
             }
         }
 
-        private static IReadOnlyList<string> GetSignatureList(string signatures)
+        private static IReadOnlyList<string> ToHeaderList(this string signatures)
         {
             if (string.IsNullOrEmpty(signatures))
             {
@@ -313,16 +312,20 @@ namespace Azure.Messaging.WebPubSub
             return signatures.Split(Constants.HeaderSeparator, StringSplitOptions.RemoveEmptyEntries);
         }
 
-        private static string GetHeaderValueOrDefault(IHeaderDictionary header, string key)
-        {
-            return header.TryGetValue(key, out StringValues value) ? value[0] : null;
-        }
-
-        private static WebPubSubEventType GetEventType(string ceType)
+        private static WebPubSubEventType GetEventType(this string ceType)
         {
             return ceType.StartsWith(Constants.Headers.CloudEvents.TypeSystemPrefix, StringComparison.OrdinalIgnoreCase) ?
                 WebPubSubEventType.System :
                 WebPubSubEventType.User;
         }
+
+        private static MessageDataType GetMessageDataType(this string mediaType) =>
+            mediaType.ToLowerInvariant() switch
+            {
+                Constants.ContentTypes.PlainTextContentType => MessageDataType.Text,
+                Constants.ContentTypes.BinaryContentType => MessageDataType.Binary,
+                Constants.ContentTypes.JsonContentType => MessageDataType.Json,
+                _ => throw new ArgumentException($"Invalid content type: {mediaType}")
+            };
     }
 }

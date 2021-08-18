@@ -13,6 +13,8 @@ namespace Azure.Messaging.WebPubSub
             public const string JsonContentType = "application/json";
             public const string BinaryContentType = "application/octet-stream";
             public const string PlainTextContentType = "text/plain";
+
+            public const string CharsetUTF8 = "charset=utf-8";
         }
 
         public static class Events
