@@ -194,22 +194,6 @@ namespace Azure.Messaging.WebPubSub.Tests
             }
         }
 
-        private sealed class TestHub : ServiceHub
-        {
-            public override Task<ServiceResponse> Connect(ConnectEventRequest request)
-            {
-                return Task.FromResult<ServiceResponse>(new ConnectResponse
-                {
-                    UserId = request.ConnectionContext.UserId
-                });
-            }
-
-            public override Task<ServiceResponse> Message(MessageEventRequest request)
-            {
-                return Task.FromResult<ServiceResponse>(new MessageResponse("ACK"));
-            }
-        }
-
         private static HttpContext PrepareHttpContext(
             Uri uri,
             WebPubSubEventType type,

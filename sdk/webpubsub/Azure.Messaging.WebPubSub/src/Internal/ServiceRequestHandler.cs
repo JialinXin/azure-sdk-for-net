@@ -34,7 +34,8 @@ namespace Azure.Messaging.WebPubSub
                     {
                         if (_options.ContainsHost(item))
                         {
-                            context.Response.Headers.Add(Constants.Headers.WebHookAllowedOrigin, Constants.DefaultAllowedHost);
+                            // return self as AllowedHost.
+                            context.Response.Headers.Add(Constants.Headers.WebHookAllowedOrigin, item);
                             return;
                         }
                     }

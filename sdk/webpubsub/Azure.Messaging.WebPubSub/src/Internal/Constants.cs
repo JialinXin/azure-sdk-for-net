@@ -5,7 +5,6 @@ namespace Azure.Messaging.WebPubSub
 {
     internal static class Constants
     {
-        public const string DefaultAllowedHost = "*";
         public static readonly char[] HeaderSeparator = { ',' };
 
         public static class ContentTypes
