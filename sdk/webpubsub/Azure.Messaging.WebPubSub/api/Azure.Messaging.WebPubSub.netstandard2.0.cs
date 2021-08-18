@@ -86,19 +86,6 @@ namespace Azure.Messaging.WebPubSub
         public Azure.Messaging.WebPubSub.MessageDataType DataType { get { throw null; } }
         public System.BinaryData Message { get { throw null; } }
     }
-    public static partial class RequestHelper
-    {
-        public static System.Collections.Generic.Dictionary<string, object> DecodeConnectionState(string connectionStates) { throw null; }
-        public static Azure.Messaging.WebPubSub.MessageDataType GetDataType(string mediaType) { throw null; }
-        public static bool IsValidationRequest(this Microsoft.AspNetCore.Http.HttpRequest request, out Azure.Messaging.WebPubSub.ValidationRequest validationRequest) { throw null; }
-        public static string ToContentType(this Azure.Messaging.WebPubSub.MessageDataType dataType) { throw null; }
-        public static string ToHeaderStates(this System.Collections.Generic.Dictionary<string, object> value) { throw null; }
-        public static System.Threading.Tasks.Task<Azure.Messaging.WebPubSub.ServiceRequest> ToServiceRequest(this Microsoft.AspNetCore.Http.HttpRequest request, Azure.Messaging.WebPubSub.ConnectionContext context = null) { throw null; }
-        public static int ToStatusCode(this Azure.Messaging.WebPubSub.WebPubSubErrorCode errorCode) { throw null; }
-        public static bool TryParseCloudEvents(this Microsoft.AspNetCore.Http.HttpRequest request, out Azure.Messaging.WebPubSub.ConnectionContext connection) { throw null; }
-        public static System.Collections.Generic.Dictionary<string, object> UpdateConnectionState(System.Collections.Generic.Dictionary<string, object> existValue, System.Collections.Generic.Dictionary<string, object> newValue) { throw null; }
-        public static bool ValidateSignature(string connectionId, string signature, string accessKey) { throw null; }
-    }
     public abstract partial class ServiceHub : System.IDisposable
     {
         protected ServiceHub() { }
@@ -113,6 +100,18 @@ namespace Azure.Messaging.WebPubSub
         public ServiceRequest(Azure.Messaging.WebPubSub.ConnectionContext context) { }
         public Azure.Messaging.WebPubSub.ConnectionContext ConnectionContext { get { throw null; } set { } }
         public abstract string Name { get; }
+    }
+    public static partial class ServiceRequestExtensions
+    {
+        public static System.Collections.Generic.Dictionary<string, object> DecodeConnectionState(this string connectionStates) { throw null; }
+        public static bool IsValidationRequest(this Microsoft.AspNetCore.Http.HttpRequest request, out Azure.Messaging.WebPubSub.ValidationRequest validationRequest) { throw null; }
+        public static bool IsValidSignature(this Azure.Messaging.WebPubSub.ConnectionContext connectionContext, Azure.Messaging.WebPubSub.WebPubSubValidationOptions options) { throw null; }
+        public static string ToContentType(this Azure.Messaging.WebPubSub.MessageDataType dataType) { throw null; }
+        public static string ToHeaderStates(this System.Collections.Generic.Dictionary<string, object> value) { throw null; }
+        public static System.Threading.Tasks.Task<Azure.Messaging.WebPubSub.ServiceRequest> ToServiceRequest(this Microsoft.AspNetCore.Http.HttpRequest request, Azure.Messaging.WebPubSub.ConnectionContext context = null) { throw null; }
+        public static int ToStatusCode(this Azure.Messaging.WebPubSub.WebPubSubErrorCode errorCode) { throw null; }
+        public static bool TryParseCloudEvents(this Microsoft.AspNetCore.Http.HttpRequest request, out Azure.Messaging.WebPubSub.ConnectionContext connection) { throw null; }
+        public static System.Collections.Generic.Dictionary<string, object> UpdateStates(this System.Collections.Generic.Dictionary<string, object> existValue, System.Collections.Generic.Dictionary<string, object> newValue) { throw null; }
     }
     public abstract partial class ServiceResponse
     {
